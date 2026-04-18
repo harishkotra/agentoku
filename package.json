@@ -1,0 +1,18 @@
+{
+  "name": "ai-sudoku-agent-race",
+  "version": "1.0.0",
+  "description": "Multiple AI agents compete to solve the same Sudoku puzzle.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "start:step": "SOLVE_MODE=step node index.js",
+    "start:web": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "openai": "^4.104.0"
+  }
+}

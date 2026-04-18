@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sudoku Agent Race UI</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <main>
+      <div class="layout">
+        <aside class="sidebar">
+          <header class="hero">
+            <h1>Sudoku Agent Race</h1>
+            <p>Configure model per provider, then run and watch step-by-step solving.</p>
+          </header>
+
+          <div class="actions">
+            <button id="start-all" class="btn-primary">Start All Providers</button>
+            <button id="reset-boards" class="btn-secondary">Reset Boards</button>
+          </div>
+
+          <section id="meta" class="meta"></section>
+
+          <footer class="sidebar-footer">
+            <a href="https://harishkotra.me" target="_blank" rel="noreferrer">Built By Harish Kotra</a>
+            <a href="https://dailybuild.xyz" target="_blank" rel="noreferrer">Checkout my other builds</a>
+          </footer>
+        </aside>
+
+        <section class="content">
+          <section class="provider-section">
+            <h2 class="section-title">Local Models</h2>
+            <div id="local-grid" class="two-col-grid"></div>
+          </section>
+
+          <section class="provider-section">
+            <h2 class="section-title">Third-Party Models</h2>
+            <div id="thirdparty-grid" class="two-col-grid"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <template id="agent-card-template">
+      <article class="agent-card">
+        <div class="card-head">
+          <h2 class="agent-name"></h2>
+          <button class="start-btn btn-primary">Start</button>
+        </div>
+
+        <div class="config-row provider-meta">
+          <span class="base-url"></span>
+        </div>
+
+        <div class="config-row model-row model-select-row hidden">
+          <label>Model</label>
+          <select class="model-select"></select>
+          <button class="refresh-models btn-secondary">Refresh</button>
+        </div>
+
+        <div class="config-row model-row model-input-row hidden">
+          <label>Model</label>
+          <input class="model-input" type="text" placeholder="Enter model name" />
+        </div>
+
+        <div class="config-row">
+          <label>Timeout (ms)</label>
+          <input class="timeout-input" type="number" min="1000" step="1000" />
+        </div>
+
+        <div class="status-bar">
+          <span class="status">idle</span>
+          <span class="time">0.00s</span>
+          <span class="attempts">attempts: 0</span>
+          <span class="invalid-count">invalid moves: 0</span>
+          <span class="timeout-count">timeouts: 0</span>
+        </div>
+        <div class="board"></div>
+        <div class="log"></div>
+      </article>
+    </template>
+
+    <script type="module" src="/web/app.js"></script>
+  </body>
+</html>

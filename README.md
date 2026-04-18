@@ -2,6 +2,10 @@
 
 A production-style Node.js project where multiple AI providers compete on the same Sudoku puzzle, with strict validation, resilient orchestration, and both CLI + visual web UI.
 
+<img width="1124" height="720" alt="agentoku" src="https://github.com/user-attachments/assets/618cee70-7bb8-4ff5-8a71-90c26b6a50f7" />
+
+<img width="1562" height="1593" alt="agentoku" src="https://github.com/user-attachments/assets/52789737-1784-4e67-b252-9a092dd2de49" />
+
 ## What This Project Demonstrates
 
 - Multi-agent architecture over heterogeneous providers:

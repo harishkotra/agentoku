@@ -311,7 +311,7 @@ if (!text.startsWith("{") || !text.endsWith("}")) {
 Suggested git flow:
 
 ```bash
-git clone https://github.com/<your-username>/<repo-name>.git
+git clone https://github.com/harishkotra/agentoku.git
 cd <repo-name>
 git checkout -b feat/your-feature
 # make changes

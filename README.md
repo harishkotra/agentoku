@@ -8,6 +8,13 @@ This README documents the **v2 upgrade** on top of yesterday’s v1 build.
 
 <img width="1562" height="1593" alt="agentoku" src="https://github.com/user-attachments/assets/52789737-1784-4e67-b252-9a092dd2de49" />
 
+### v2
+
+https://github.com/user-attachments/assets/cc1be774-4f1a-4b20-b521-509367dc515f
+
+<img width="1381" height="2572" alt="screencapture-localhost-3000-one-shot-2026-04-19-12_39_48" src="https://github.com/user-attachments/assets/efa60229-6ec9-4d72-9efb-801e074992cf" />
+
+
 ## What changed in V2 (incremental)
 
 V1 delivered:

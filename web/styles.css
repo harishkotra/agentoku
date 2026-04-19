@@ -78,6 +78,11 @@ main {
   font-size: 0.9rem;
 }
 
+.nav-link {
+  text-align: center;
+  text-decoration: none;
+}
+
 .btn-primary {
   background: var(--accent);
   color: #fff;
@@ -188,6 +193,10 @@ main {
   margin-bottom: 6px;
 }
 
+.action-row {
+  grid-template-columns: 1fr auto;
+}
+
 .config-row label {
   font-size: 0.85rem;
   color: var(--muted);
@@ -279,6 +288,26 @@ main {
   height: 120px;
   overflow: auto;
   padding: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.result-panel {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fffaf2;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.estimator-panel .config-row {
+  grid-template-columns: 92px 1fr;
+}
+
+.estimate-output {
+  margin-top: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
   white-space: pre-wrap;

@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { loadConfig } from "./core/config.js";
 import { runAgentStepwise } from "./core/orchestrator.js";
 import { getPuzzle } from "./core/puzzles.js";
+import { isBoardShapeValid, isBoardValid, isSolved, preserveClues } from "./core/sudoku.js";
+import { withTimeout, nowMs, elapsedMs } from "./utils/timer.js";
 import { OpenAIAgent } from "./agents/OpenAIAgent.js";
 import { OllamaAgent } from "./agents/OllamaAgent.js";
 import { LMStudioAgent } from "./agents/LMStudioAgent.js";
@@ -37,13 +39,15 @@ function providerCatalog() {
       id: "openai",
       name: "OpenAI",
       modelInput: "manual",
-      enabled: Boolean(config.openai.apiKey),
-      disabledReason: config.openai.apiKey ? null : "OPENAI_API_KEY is missing",
+      enabled: true,
+      requiresApiKey: true,
+      hasApiKey: Boolean(config.openai.apiKey),
+      disabledReason: null,
       baseUrl: "https://api.openai.com/v1",
       defaultModel: config.openai.model,
-      createAgent: ({ model, timeoutMs }) =>
+      createAgent: ({ model, timeoutMs, apiKey }) =>
         new OpenAIAgent({
-          apiKey: config.openai.apiKey,
+          apiKey: apiKey || config.openai.apiKey,
           model,
           timeoutMs,
         }),
@@ -53,6 +57,8 @@ function providerCatalog() {
       name: "Ollama",
       modelInput: "select",
       enabled: Boolean(config.ollama.enabled),
+      requiresApiKey: false,
+      hasApiKey: false,
       disabledReason: config.ollama.enabled ? null : "ENABLE_OLLAMA=false",
       baseUrl: config.ollama.baseUrl,
       defaultModel: config.ollama.model,
@@ -67,6 +73,8 @@ function providerCatalog() {
       name: "LM Studio",
       modelInput: "select",
       enabled: Boolean(config.lmStudio.enabled),
+      requiresApiKey: false,
+      hasApiKey: Boolean(config.lmStudio.apiKey),
       disabledReason: config.lmStudio.enabled ? null : "ENABLE_LMSTUDIO=false",
       baseUrl: config.lmStudio.baseUrl,
       defaultModel: config.lmStudio.model,
@@ -82,13 +90,15 @@ function providerCatalog() {
       id: "featherless",
       name: "Featherless",
       modelInput: "manual",
-      enabled: Boolean(config.featherless.apiKey),
-      disabledReason: config.featherless.apiKey ? null : "FEATHERLESS_API_KEY is missing",
+      enabled: true,
+      requiresApiKey: true,
+      hasApiKey: Boolean(config.featherless.apiKey),
+      disabledReason: null,
       baseUrl: config.featherless.baseUrl,
       defaultModel: config.featherless.model,
-      createAgent: ({ model, timeoutMs }) =>
+      createAgent: ({ model, timeoutMs, apiKey }) =>
         new FeatherlessAgent({
-          apiKey: config.featherless.apiKey,
+          apiKey: apiKey || config.featherless.apiKey,
           baseUrl: config.featherless.baseUrl,
           model,
           timeoutMs,
@@ -200,6 +210,8 @@ async function buildProviderView() {
         name: provider.name,
         modelInput: provider.modelInput,
         enabled: provider.enabled,
+        requiresApiKey: provider.requiresApiKey,
+        hasApiKey: provider.hasApiKey,
         disabledReason: provider.disabledReason,
         baseUrl: provider.baseUrl,
         defaultModel: provider.defaultModel,
@@ -223,7 +235,18 @@ function defaultTimeoutForProvider(providerId) {
   return config.general.timeoutMs;
 }
 
-async function startProviderRun({ providerId, model, puzzleLevel, timeoutMs }) {
+function resolveApiKey(provider, apiKeyOverride) {
+  if (!provider.requiresApiKey) return null;
+
+  const key = typeof apiKeyOverride === "string" ? apiKeyOverride.trim() : "";
+  if (key) return key;
+
+  if (provider.id === "openai") return config.openai.apiKey;
+  if (provider.id === "featherless") return config.featherless.apiKey;
+  return null;
+}
+
+async function startProviderRun({ providerId, model, puzzleLevel, timeoutMs, apiKey }) {
   const provider = providerById(providerId);
   if (!provider) {
     return { ok: false, statusCode: 404, payload: { error: `Unknown provider: ${providerId}` } };
@@ -239,6 +262,15 @@ async function startProviderRun({ providerId, model, puzzleLevel, timeoutMs }) {
 
   if (typeof model !== "string" || model.trim() === "") {
     return { ok: false, statusCode: 400, payload: { error: `Model is required for ${provider.name}` } };
+  }
+
+  const resolvedApiKey = resolveApiKey(provider, apiKey);
+  if (provider.requiresApiKey && !resolvedApiKey) {
+    return {
+      ok: false,
+      statusCode: 400,
+      payload: { error: `${provider.name} API key is required (set in env or pass from UI).` },
+    };
   }
 
   if (activeRunByProvider.has(provider.id)) {
@@ -269,7 +301,7 @@ async function startProviderRun({ providerId, model, puzzleLevel, timeoutMs }) {
 
   let agent;
   try {
-    agent = provider.createAgent({ model, timeoutMs: resolvedTimeoutMs });
+    agent = provider.createAgent({ model, timeoutMs: resolvedTimeoutMs, apiKey: resolvedApiKey });
   } catch (error) {
     activeRunByProvider.delete(provider.id);
     return { ok: false, statusCode: 500, payload: { error: `Agent init failed: ${error.message}` } };
@@ -339,11 +371,129 @@ async function startProviderRun({ providerId, model, puzzleLevel, timeoutMs }) {
   return { ok: true, payload: { runId } };
 }
 
+function validateFullSolutionPayload(payload, puzzle) {
+  const solution = payload?.solution;
+
+  if (!isBoardShapeValid(solution)) {
+    return { ok: false, reason: "Malformed solution shape (expected 9x9 integers 0-9)." };
+  }
+  if (!preserveClues(puzzle, solution)) {
+    return { ok: false, reason: "Model modified fixed clues from the original puzzle." };
+  }
+  if (!isBoardValid(solution)) {
+    return { ok: false, reason: "Returned board violates Sudoku constraints." };
+  }
+  if (!isSolved(solution)) {
+    return { ok: false, reason: "Returned board is not fully solved." };
+  }
+
+  return { ok: true, solution };
+}
+
+async function solveProviderOnce({ providerId, model, puzzleLevel, timeoutMs, apiKey }) {
+  const provider = providerById(providerId);
+  if (!provider) {
+    return { ok: false, statusCode: 404, payload: { error: `Unknown provider: ${providerId}` } };
+  }
+
+  if (!provider.enabled) {
+    return {
+      ok: false,
+      statusCode: 400,
+      payload: { error: `${provider.name} is disabled: ${provider.disabledReason ?? "not configured"}` },
+    };
+  }
+
+  if (typeof model !== "string" || model.trim() === "") {
+    return { ok: false, statusCode: 400, payload: { error: `Model is required for ${provider.name}` } };
+  }
+
+  const resolvedApiKey = resolveApiKey(provider, apiKey);
+  if (provider.requiresApiKey && !resolvedApiKey) {
+    return {
+      ok: false,
+      statusCode: 400,
+      payload: { error: `${provider.name} API key is required (set in env or pass from UI).` },
+    };
+  }
+
+  const puzzle = getPuzzle(puzzleLevel ?? config.general.puzzleLevel);
+  const resolvedTimeoutMs = parsePositiveInt(timeoutMs, defaultTimeoutForProvider(provider.id));
+
+  let agent;
+  try {
+    agent = provider.createAgent({ model, timeoutMs: resolvedTimeoutMs, apiKey: resolvedApiKey });
+  } catch (error) {
+    return { ok: false, statusCode: 500, payload: { error: `Agent init failed: ${error.message}` } };
+  }
+
+  const started = nowMs();
+  try {
+    const response = await withTimeout(() => agent.solve(puzzle, "full"), resolvedTimeoutMs);
+    const validated = validateFullSolutionPayload(response, puzzle);
+
+    if (!validated.ok) {
+      return {
+        ok: true,
+        payload: {
+          providerId: provider.id,
+          providerName: provider.name,
+          model,
+          timeoutMs: resolvedTimeoutMs,
+          elapsedMs: elapsedMs(started),
+          status: "invalid",
+          reason: validated.reason,
+          initialPuzzle: puzzle,
+          submitted: response ?? null,
+          solution: null,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      payload: {
+        providerId: provider.id,
+        providerName: provider.name,
+        model,
+        timeoutMs: resolvedTimeoutMs,
+        elapsedMs: elapsedMs(started),
+        status: "solved",
+        reason: null,
+        initialPuzzle: puzzle,
+        submitted: response ?? null,
+        solution: validated.solution,
+      },
+    };
+  } catch (error) {
+    const isTimeout = error.message === "TIMEOUT";
+    return {
+      ok: true,
+      payload: {
+        providerId: provider.id,
+        providerName: provider.name,
+        model,
+        timeoutMs: resolvedTimeoutMs,
+        elapsedMs: elapsedMs(started),
+        status: isTimeout ? "timeout" : "failed",
+        reason: isTimeout ? "Timed out waiting for one-shot full solution." : error.message,
+        initialPuzzle: puzzle,
+        submitted: null,
+        solution: null,
+      },
+    };
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (req.method === "GET" && url.pathname === "/") {
     return serveStaticFile(res, path.resolve("web/index.html"), "text/html; charset=utf-8");
+  }
+
+  if (req.method === "GET" && url.pathname === "/one-shot") {
+    return serveStaticFile(res, path.resolve("web/one-shot.html"), "text/html; charset=utf-8");
   }
 
   if (req.method === "GET" && url.pathname === "/web/styles.css") {
@@ -352,6 +502,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/web/app.js") {
     return serveStaticFile(res, path.resolve("web/app.js"), "application/javascript; charset=utf-8");
+  }
+
+  if (req.method === "GET" && url.pathname === "/web/one-shot.js") {
+    return serveStaticFile(res, path.resolve("web/one-shot.js"), "application/javascript; charset=utf-8");
   }
 
   if (req.method === "GET" && url.pathname === "/api/providers") {
@@ -389,17 +543,42 @@ const server = http.createServer(async (req, res) => {
       const model = typeof body.model === "string" ? body.model.trim() : "";
       const puzzleLevel = body.puzzleLevel ?? config.general.puzzleLevel;
       const timeoutMs = body.timeoutMs;
+      const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
 
       if (!providerId) {
         return json(res, 400, { error: "providerId is required" });
       }
 
-      const startResult = await startProviderRun({ providerId, model, puzzleLevel, timeoutMs });
+      const startResult = await startProviderRun({ providerId, model, puzzleLevel, timeoutMs, apiKey });
       if (!startResult.ok) {
         return json(res, startResult.statusCode, startResult.payload);
       }
 
       return json(res, 200, startResult.payload);
+    } catch (error) {
+      return json(res, 400, { error: `Invalid request body: ${error.message}` });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/solve-once") {
+    try {
+      const body = await readRequestBody(req);
+      const providerId = typeof body.providerId === "string" ? body.providerId : "";
+      const model = typeof body.model === "string" ? body.model.trim() : "";
+      const puzzleLevel = body.puzzleLevel ?? config.general.puzzleLevel;
+      const timeoutMs = body.timeoutMs;
+      const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
+
+      if (!providerId) {
+        return json(res, 400, { error: "providerId is required" });
+      }
+
+      const solveResult = await solveProviderOnce({ providerId, model, puzzleLevel, timeoutMs, apiKey });
+      if (!solveResult.ok) {
+        return json(res, solveResult.statusCode, solveResult.payload);
+      }
+
+      return json(res, 200, solveResult.payload);
     } catch (error) {
       return json(res, 400, { error: `Invalid request body: ${error.message}` });
     }

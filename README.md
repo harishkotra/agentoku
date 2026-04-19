@@ -1,71 +1,84 @@
-# AI Sudoku Agent Race
+# Agentoku - AI Sudoku Arena (V2)
 
-A production-style Node.js project where multiple AI providers compete on the same Sudoku puzzle, with strict validation, resilient orchestration, and both CLI + visual web UI.
+Agentoku is a Node.js app for benchmarking LLM providers on Sudoku under strict validation.
+
+This README documents the **v2 upgrade** on top of yesterday’s v1 build.
 
 <img width="1124" height="720" alt="agentoku" src="https://github.com/user-attachments/assets/618cee70-7bb8-4ff5-8a71-90c26b6a50f7" />
 
 <img width="1562" height="1593" alt="agentoku" src="https://github.com/user-attachments/assets/52789737-1784-4e67-b252-9a092dd2de49" />
 
-## What This Project Demonstrates
+## What changed in V2 (incremental)
 
-- Multi-agent architecture over heterogeneous providers:
-  - OpenAI (official SDK)
-  - Ollama (local runtime)
-  - LM Studio (OpenAI-compatible local runtime)
-  - Featherless (OpenAI-compatible cloud endpoint)
-- A shared agent contract for interchangeable providers.
-- Strict JSON-only AI outputs with defensive parsing.
-- Step-based orchestration that tolerates model mistakes and keeps going.
-- Live visual comparison of providers, including:
-  - attempts
-  - invalid move count
-  - timeout count
-  - final status
+V1 delivered:
+- step-by-step multi-provider Sudoku race
+- robust validation and retry handling
+- live web UI + SSE event stream
+
+V2 adds:
+- **One-Shot Solve page** (`/one-shot`) for full-board solving in a single call
+- **single board UX** (pick provider + model + run once)
+- **runtime API key input** for OpenAI/Featherless (so they are usable even if env key missing)
+- **cost-optimized prompt** for one-shot/full mode (shorter prompt, lower token footprint)
+- optional **token/cost estimate panel** (toggle hidden by default)
+
+## Screens and Flows
+
+### Step-by-step Arena (V1)
+- URL: `/`
+- Providers run move-by-move
+- Tracks attempts, invalid moves, timeouts
+
+### One-Shot Solve (V2)
+- URL: `/one-shot`
+- User selects one provider + model
+- Sends full board once, expects full solution once
+- Validates entire response server-side
 
 ## Tech Stack
 
-- Runtime: Node.js 20+
-- Module system: ESM (`"type": "module"`)
-- Networking: native `fetch`
-- OpenAI provider: official `openai` npm package
-- Web UI server: native `http` (no framework dependency)
-- Frontend: vanilla HTML/CSS/JS
-- Streaming updates: Server-Sent Events (SSE)
+- Node.js 20+ (ESM)
+- Native `http` server (no framework)
+- Native `fetch`
+- OpenAI SDK (`openai` package)
+- Vanilla HTML/CSS/JS
+- SSE for live streaming on step-by-step page
 
-## Architecture
+## Architecture (V2)
 
 ```mermaid
 flowchart LR
-    UI["Web UI (Vanilla JS)"] -->|POST /api/start-agent| API["Node HTTP Server"]
-    UI -->|GET /api/events| SSE["SSE Stream"]
+    UI1["Web: Step-by-Step Arena"] -->|POST /api/start-agent| API["Node HTTP Server"]
+    UI1 -->|GET /api/events| SSE["SSE"]
+
+    UI2["Web: One-Shot Solve"] -->|POST /api/solve-once| API
+    UI2 -->|GET /api/providers| API
+
     API --> ORCH["Step Orchestrator"]
+    API --> ONESHOT["One-Shot Runner"]
 
-    ORCH --> OA["OpenAI Agent"]
-    ORCH --> OL["Ollama Agent"]
-    ORCH --> LM["LM Studio Agent"]
-    ORCH --> FE["Featherless Agent"]
+    ORCH --> AGENTS["Provider Agents"]
+    ONESHOT --> AGENTS
 
-    OA --> OAAPI["OpenAI API"]
-    OL --> OLLAMA["Local Ollama"]
-    LM --> LMAPI["Local LM Studio API"]
-    FE --> FEAPI["Featherless API"]
+    AGENTS --> OA["OpenAI"]
+    AGENTS --> OL["Ollama"]
+    AGENTS --> LM["LM Studio"]
+    AGENTS --> FE["Featherless"]
 
-    ORCH --> VAL["Sudoku Validator"]
-    VAL --> RULES["Move Validity / Board Validity / Solved Check / Clue Preservation"]
-    ORCH --> SSE
+    API --> VAL["Sudoku Validation Core"]
 ```
 
-### Folder Structure
+## Folder Structure
 
 ```text
 .
 ├── agents/
 │   ├── BaseAgent.js
 │   ├── OpenAIAgent.js
+│   ├── OpenAICompatibleAgent.js
 │   ├── OllamaAgent.js
 │   ├── LMStudioAgent.js
 │   ├── FeatherlessAgent.js
-│   ├── OpenAICompatibleAgent.js
 │   └── index.js
 ├── core/
 │   ├── config.js
@@ -74,275 +87,139 @@ flowchart LR
 │   ├── puzzles.js
 │   └── sudoku.js
 ├── utils/
-│   ├── format.js
 │   ├── json.js
-│   └── timer.js
+│   ├── timer.js
+│   └── format.js
 ├── web/
 │   ├── index.html
-│   ├── styles.css
-│   └── app.js
-├── index.js
+│   ├── app.js
+│   ├── one-shot.html
+│   ├── one-shot.js
+│   └── styles.css
 ├── server.js
+├── index.js
 ├── .env.example
 ├── .gitignore
 ├── package.json
 └── README.md
 ```
 
-## Core Concepts
-
-### 1. Agent Contract
-
-Every provider implements the same contract:
-
-- `name`
-- `solve(board, mode)`
-
-Supported modes:
-
-- `full` -> returns full solved board
-- `step` -> returns one move (`row`, `col`, `value`)
-
-### 2. Strict AI Output Format
-
-Expected full response:
-
-```json
-{
-  "solution": [[5,3,4,6,7,8,9,1,2], [6,7,2,1,9,5,3,4,8], [1,9,8,3,4,2,5,6,7], [8,5,9,7,6,1,4,2,3], [4,2,6,8,5,3,7,9,1], [7,1,3,9,2,4,8,5,6], [9,6,1,5,3,7,2,8,4], [2,8,7,4,1,9,6,3,5], [3,4,5,2,8,6,1,7,9]]
-}
-```
-
-Expected step response:
-
-```json
-{
-  "row": 0,
-  "col": 2,
-  "value": 4
-}
-```
-
-Any non-JSON or malformed shape is rejected.
-
-### 3. Validation Pipeline
-
-Each candidate move/board is checked for:
-
-- board shape correctness
-- Sudoku row/column/subgrid constraints
-- preserving original puzzle clues
-- solved-state correctness
-
-### 4. Fault-Tolerant Step Runner
-
-The step orchestrator now:
-
-- continues after invalid moves
-- counts invalid moves
-- treats timeouts as retryable
-- counts timeouts
-- emits per-step events via SSE to the UI
-
 ## Setup
-
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Create env file:
-
-```bash
-cp .env.example .env
-```
-
-3. Fill required keys/endpoints in `.env`.
-
-Notes:
-- `.env` is loaded automatically at startup.
-- `.env` values override shell exports.
-
-## Running
-
-### CLI
-
-```bash
-npm start
-```
-
-Step-focused mode:
-
-```bash
-npm run start:step
-```
-
-### Web UI
-
-```bash
-npm run start:web
-```
-
-Then open [http://localhost:3000](http://localhost:3000).
-
-## Web UI Features
-
-- Left sidebar with global actions and metadata
-- Footer links:
-  - Built By Harish Kotra
-  - Checkout my other builds
-- Two-row provider layout:
-  - Local Models (Ollama, LM Studio)
-  - Third-Party Models (OpenAI, Featherless)
-- Two columns per row on desktop, one column on mobile
-- Per-provider model configuration:
-  - auto-detect dropdown for Ollama/LM Studio
-  - manual model input for OpenAI/Featherless
-- Per-provider timeout override
-- Live counters: attempts, invalid moves, timeouts
-
-## Environment Variables
-
-### General
-
-- `SOLVE_MODE=full|step`
-- `PUZZLE_LEVEL=easy|medium`
-- `AGENT_TIMEOUT_MS=30000`
-- `AGENT_RETRIES=2`
-- `MAX_STEP_COUNT=150`
-- `STEP_DELAY_MS=350`
-- `VERBOSE_LOGS=true|false`
-
-### Web
-
-- `WEB_PORT=3000`
-
-### OpenAI
-
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL=gpt-4o-mini`
-
-### Ollama
-
-- `ENABLE_OLLAMA=true|false`
-- `OLLAMA_BASE_URL=http://127.0.0.1:11434`
-- `OLLAMA_MODEL=gemma4:latest`
-
-### LM Studio
-
-- `ENABLE_LMSTUDIO=true|false`
-- `LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1`
-- `LMSTUDIO_API_KEY=lm-studio`
-- `LMSTUDIO_MODEL=local-model`
-
-### Featherless
-
-- `FEATHERLESS_API_KEY`
-- `FEATHERLESS_BASE_URL=https://api.featherless.ai/v1`
-- `FEATHERLESS_MODEL=featherless-chat`
-
-## API Surface (Web Server)
-
-- `GET /api/providers` -> provider metadata + detected models
-- `GET /api/provider-models?providerId=...` -> refresh model list for local providers
-- `POST /api/start-agent` -> start provider run with model/timeout
-- `GET /api/events?runId=...` -> SSE event stream
-- `GET /api/health` -> basic health info
-
-Example run start payload:
-
-```json
-{
-  "providerId": "ollama",
-  "model": "gemma4:latest",
-  "timeoutMs": 180000
-}
-```
-
-## Useful Code Snippets
-
-### Provider-agnostic step run invocation
-
-```js
-await runAgentStepwise({
-  agent,
-  puzzle,
-  timeoutMs,
-  retries,
-  maxSteps,
-  stepDelayMs,
-  maxTimeouts: 6,
-  onEvent,
-});
-```
-
-### SSE wiring (server side)
-
-```js
-res.writeHead(200, {
-  "Content-Type": "text/event-stream",
-  "Cache-Control": "no-cache",
-  Connection: "keep-alive",
-});
-```
-
-### Strict JSON parsing guard
-
-```js
-if (!text.startsWith("{") || !text.endsWith("}")) {
-  return { ok: false, error: "Response is not strict JSON object text." };
-}
-```
-
-## Contributing
-
-### Fork and Contribute Workflow
-
-1. Fork this repo on GitHub.
-2. Clone your fork.
-3. Create a feature branch.
-4. Implement + test locally.
-5. Open a PR with:
-   - what changed
-   - why it changed
-   - screenshots or logs for behavior changes
-
-Suggested git flow:
 
 ```bash
 git clone https://github.com/harishkotra/agentoku.git
-cd <repo-name>
-git checkout -b feat/your-feature
-# make changes
+cd agentoku
 npm install
-npm run start:web
-git add .
-git commit -m "feat: add ..."
-git push origin feat/your-feature
+cp .env.example .env
 ```
 
-### Contribution Guidelines
+Run web app:
 
-- Keep provider logic isolated in `agents/`.
-- Keep core game/orchestration in `core/`.
-- Avoid introducing heavy dependencies without strong reason.
-- Preserve strict output validation guarantees.
-- Document new config knobs in `.env.example` and README.
+```bash
+npm run start:web
+```
 
-## Feature Ideas / Roadmap
+- Step-by-step arena: `http://localhost:3000/`
+- One-shot page: `http://localhost:3000/one-shot`
 
-- Add persistent run history with SQLite.
-- Add per-provider prompt templates editable from UI.
-- Add tournament mode across multiple puzzles and aggregate scorecards.
-- Add websocket support for richer real-time UX.
-- Add deterministic fallback solver for baseline comparison.
-- Add Docker setup for one-command local demo.
-- Add unit/integration tests (Vitest/Jest) for validators and orchestrator.
-- Add CI workflows for lint/test.
+## Provider Configuration
 
-## Security Notes
+### Local providers
+- Ollama and LM Studio model lists are auto-discovered.
 
-- Never commit `.env`.
-- Rotate leaked API keys immediately.
-- Treat model outputs as untrusted input; keep validation strict.
+### OpenAI and Featherless (V2)
+- If env key exists, provider runs normally.
+- If env key is missing, one-shot page allows runtime API key input.
+
+## API Endpoints
+
+- `GET /api/providers`
+- `GET /api/provider-models?providerId=<id>`
+- `POST /api/start-agent` (step-by-step)
+- `GET /api/events?runId=<id>`
+- `POST /api/solve-once` (V2 one-shot)
+- `GET /api/health`
+
+### Example: one-shot request
+
+```json
+{
+  "providerId": "openai",
+  "model": "gpt-4o-mini",
+  "timeoutMs": 30000,
+  "apiKey": "sk-..."
+}
+```
+
+## Cost Optimization in V2
+
+V2 reduced prompt overhead for full-board solve.
+
+### Before (v1 style)
+- longer narrative instructions
+- more tokens consumed per full request
+
+### After (v2 compact prompt)
+
+```js
+return [
+  "Solve Sudoku. Strict JSON only.",
+  "Rules: digits 1-9; each row/col/3x3 has 1-9 exactly once; never change non-zero clues.",
+  'Return exactly: {"solution":[[9x9 integers]]}',
+  "No markdown, no extra keys/text.",
+  "Board:",
+  safeStringify(board),
+].join("\n");
+```
+
+### Why this helps
+- lower prompt tokens
+- less repeated instruction overhead
+- improved suitability for one-shot testing and cost comparisons
+
+## Validation and Safety Guarantees
+
+Every one-shot response is validated for:
+- correct 9x9 shape
+- clue preservation
+- row/column/3x3 validity
+- fully solved board
+
+## Contributing
+
+### Fork workflow
+
+```bash
+git clone https://github.com/harishkotra/agentoku.git
+cd agentoku
+git checkout -b feat/my-change
+npm install
+npm run start:web
+```
+
+Then:
+1. Commit with clear messages
+2. Push branch
+3. Open PR with screenshots/logs for UI or behavior changes
+
+### Contribution guidelines
+- Keep provider-specific logic inside `agents/`
+- Keep Sudoku/rules logic in `core/`
+- Preserve strict JSON output contracts
+- Preserve/extend validation, never weaken it
+- Update README/docs for user-facing behavior changes
+
+## Good V3 feature ideas
+
+- Persist run history and comparisons (SQLite)
+- Multi-puzzle tournament mode and ELO ranking
+- Prompt templates per provider in UI
+- CI pipeline with orchestrator/validator tests
+- Exportable benchmark reports (JSON/CSV)
+- Adaptive retry policy based on provider latency
+
+## Security notes
+
+- Never commit `.env`
+- Rotate leaked API keys immediately
+- Treat all model outputs as untrusted until validated

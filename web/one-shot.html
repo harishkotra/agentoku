@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sudoku One-Shot Solve</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <main>
+      <div class="layout">
+        <aside class="sidebar">
+          <header class="hero">
+            <h1>Sudoku One-Shot Solve</h1>
+            <p>Select one provider and one model, then solve the full board in a single request.</p>
+          </header>
+
+          <div class="actions">
+            <a class="btn-secondary nav-link" href="/">Go To Step-by-Step Arena</a>
+          </div>
+
+          <section id="meta" class="meta"></section>
+
+          <footer class="sidebar-footer">
+            <a href="https://harishkotra.me" target="_blank" rel="noreferrer">Built By Harish Kotra</a>
+            <a href="https://dailybuild.xyz" target="_blank" rel="noreferrer">Checkout my other builds</a>
+          </footer>
+        </aside>
+
+        <section class="content">
+          <section class="provider-section">
+            <h2 class="section-title">One-Shot Run</h2>
+
+            <article class="agent-card single-run-card">
+              <div class="config-row">
+                <label>Provider</label>
+                <select id="provider-select"></select>
+              </div>
+
+              <div class="config-row provider-meta">
+                <span id="provider-base-url"></span>
+              </div>
+
+              <div id="model-select-row" class="config-row hidden">
+                <label>Model</label>
+                <select id="model-select"></select>
+                <button id="refresh-models" class="btn-secondary">Refresh</button>
+              </div>
+
+              <div id="model-input-row" class="config-row model-input-row hidden">
+                <label>Model</label>
+                <input id="model-input" type="text" placeholder="Enter model name" />
+              </div>
+
+              <div id="api-key-row" class="config-row model-input-row hidden">
+                <label>API Key</label>
+                <input id="api-key-input" type="password" placeholder="Paste API key (optional if env key set)" />
+              </div>
+
+              <div class="config-row">
+                <label>Timeout (ms)</label>
+                <input id="timeout-input" type="number" min="1000" step="1000" />
+              </div>
+
+              <div class="config-row action-row">
+                <button id="start-one-shot" class="btn-primary">Start One-Shot</button>
+                <button id="toggle-estimator" class="btn-secondary">Show Estimator</button>
+              </div>
+
+              <div class="status-bar">
+                <span id="run-status" class="status">idle</span>
+                <span id="run-time" class="time">0.00s</span>
+              </div>
+
+              <div class="provider-section">
+                <h3 class="section-title">Input Puzzle</h3>
+                <div id="input-board" class="board"></div>
+              </div>
+
+              <div class="provider-section">
+                <h3 class="section-title">Returned Solution</h3>
+                <div id="output-board" class="board"></div>
+              </div>
+
+              <div id="result-panel" class="result-panel"></div>
+
+              <div id="estimator-panel" class="result-panel estimator-panel hidden">
+                <h3 class="section-title">Token / Cost Estimate</h3>
+                <div class="config-row">
+                  <label>Input $/1M</label>
+                  <input id="rate-input" type="number" min="0" step="0.0001" />
+                </div>
+                <div class="config-row">
+                  <label>Output $/1M</label>
+                  <input id="rate-output" type="number" min="0" step="0.0001" />
+                </div>
+                <div class="config-row">
+                  <label>Step Factor</label>
+                  <input id="step-factor" type="number" min="1" step="0.1" />
+                </div>
+                <div id="estimate-output" class="estimate-output"></div>
+              </div>
+
+              <div id="run-log" class="log"></div>
+            </article>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="/web/one-shot.js"></script>
+  </body>
+</html>

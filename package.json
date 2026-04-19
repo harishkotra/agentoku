@@ -4,6 +4,7 @@
   "description": "Multiple AI agents compete to solve the same Sudoku puzzle.",
   "type": "module",
   "main": "index.js",
+  "author": "Harish Kotra",
   "scripts": {
     "start": "node index.js",
     "start:step": "SOLVE_MODE=step node index.js",
